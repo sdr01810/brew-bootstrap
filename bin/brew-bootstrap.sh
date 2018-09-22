@@ -4,7 +4,15 @@
 ##
 ## Installs Homebrew, and then a standard set of taps, extensions, formulas, and bundles.
 ##
-## KNOWN BUGS & LIMITATIONS:
+## Arguments:
+##
+##    None.
+##
+## Typical use:
+##
+##    brew-bootstrap.sh
+##
+## Known bugs & limitations:
 ##
 ##    Only installs Homebrew to `/usr/local`. This is a limitation of the standard Homebrew installation script.
 ##
