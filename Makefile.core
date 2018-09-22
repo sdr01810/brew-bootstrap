@@ -1,0 +1,183 @@
+## GNU makefile (core behavior).
+##
+## Typical uses:
+##
+##     for vendor in 'GNU Make' ; do
+##         if make --version | egrep -q -i "^${vendor}" ; then
+##             echo You are using ${vendor}.
+##             true
+##         else
+##             echo You are not using ${vendor}.
+##             false
+##         fi
+##     done
+##
+##     make
+##     make default
+##
+##     make what
+##
+##     make build
+##     make clean
+##     make clobber
+##
+##     make build check stage
+##
+##     make install
+##     make install.undo
+##
+##     sudo make install DESTDIR=/opt/my-package
+##     sudo make install INSTALLATION_DIR=/opt/my-package
+##
+
+package_name := $(shell head -1 NAME.txt)
+package_version := $(shell head -1 VERSION.txt)
+
+##
+
+build_dir ?= build
+
+build_staging_dir ?= $(build_dir)/staging
+
+##
+
+distribution_candidate_files = $(strip \
+	$(shell $(distribution_candidate_file_finder)) \
+)
+distribution_candidate_file_finder = $(strip \
+	find $(distribution_candidate_top_files_and_dirs_glob) ! -type d ! -name '.*' ! -name '*~' \
+)
+ifndef distribution_candidate_top_files_and_dirs_glob
+$(error Not defined: distribution_candidate_top_files_and_dirs_glob)
+endif
+
+##
+
+distribution_archive_files = $(strip \
+	$(distribution_archive_file_tar_gz) \
+)
+distribution_archive_file_tar_gz = $(strip \
+	$(build_dir)/$(distribution_archive_file_stem).tar.gz \
+)
+distribution_archive_file_stem = $(strip \
+	$(package_name)-$(package_version) \
+)
+
+##
+
+distribution_staging_dir = $(strip \
+	$(build_staging_dir)/$(distribution_archive_file_stem) \
+)
+distribution_staging_dir_umask ?= 0022
+
+distribution_staging_dir_parent = $(strip \
+	$(patsubst %/,%,$(dir $(distribution_staging_dir))) \
+)
+
+##
+
+installation_dir = $(strip \
+	$(or $(patsubst %/,%,$(or $(INSTALLATION_DIR),$(DESTDIR))),$(default_installation_dir)) \
+)
+installation_dir_umask ?= 0022
+
+installation_dir_parent = $(strip \
+	$(patsubst %/,%,$(dir $(installation_dir))) \
+)
+default_installation_dir = $(strip \
+	/opt/$(distribution_archive_file_stem) \
+)
+
+
+##
+
+targets := default t
+
+default ::
+
+force =
+
+t ::
+
+##
+
+targets += what
+
+what ::
+	@echo "$(targets)" | perl -pe 's{\s+}{$$/}g' | sort -u
+
+##
+
+targets += build check clean clobber
+
+build ::
+
+check :: build
+
+clean ::
+
+clobber :: clean
+
+default :: build
+
+##
+
+targets += stage
+
+stage :: $(distribution_staging_dir)
+
+$(distribution_staging_dir) : $(distribution_candidate_files) $(distribution_staging_dir_parent)
+	umask $(distribution_staging_dir_umask) && mkdir -p "$@" && \
+	$(distribution_candidate_file_finder) -print0 | cpio -0 -pdmuv "$@"
+
+$(distribution_staging_dir_parent) :
+	umask $(distribution_staging_dir_umask) && mkdir -p "$@"
+
+clobber ::
+	rm -rf "$(distribution_staging_dir)"
+
+default :: #!#stage
+
+##
+
+targets += dist distribution
+
+dist distribution :: $(distribution_archive_files)
+
+$(distribution_archive_file_tar_gz) : $(distribution_candidate_files) $(distribution_staging_dir)
+	cd "$(distribution_staging_dir_parent)" && \
+	tar cvf "$(notdir $@)" "$(notdir $(distribution_staging_dir))"
+
+clobber ::
+	rm -rf "$(distribution_archive_files)"
+
+default :: #!#distribution
+
+##
+
+targets += install install.undo
+
+install :: $(installation_dir)
+
+install.undo :: ; rm -rf "$(installation_dir)"
+
+$(installation_dir) : $(distribution_staging_dir) $(installation_dir_parent)
+	umask $(installation_dir_umask) && cp -r "$<" "$@"
+
+$(installation_dir_parent) :
+	umask $(installation_dir_umask) && mkdir -p "$@"
+
+clobber ::
+
+default :: #!#install
+
+##
+
+.PHONY : $(targets)
+
+clobber ::
+	rm -rf "$(build_staging_dir)"
+	rm -rf "$(build_dir)"
+
+## EOF
+
