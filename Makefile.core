@@ -2,12 +2,12 @@
 ##
 ## Typical uses:
 ##
-##     for vendor in 'GNU Make' ; do
-##         if make --version | egrep -q -i "^${vendor}" ; then
-##             echo You are using ${vendor}.
+##     for tool_name in 'GNU Make' ; do
+##         if make --version | egrep -q -i "^${tool_name}" ; then
+##             echo You are using ${tool_name}.
 ##             true
 ##         else
-##             echo You are not using ${vendor}.
+##             echo You are not using ${tool_name}.
 ##             false
 ##         fi
 ##     done
