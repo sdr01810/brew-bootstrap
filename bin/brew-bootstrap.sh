@@ -1,13 +1,13 @@
 #!/bin/bash
-## Bootstrap installation of package manager Homebrew.
+## Bootstrap the installation of (Home)brew packages, by provisioning brew itself.
 ## By Stephen D. Rogers <inbox.c7r@steve-rogers.com>
-## 
-## Installs Homebrew itself, and then a standard set of taps, extensions, formulas, and bundles.
-## 
+##
+## Installs Homebrew, and then a standard set of taps, extensions, formulas, and bundles.
+##
 ## KNOWN BUGS & LIMITATIONS:
-## 
+##
 ##    Only installs Homebrew to `/usr/local`. This is a limitation of the standard Homebrew installation script.
-##    
+##
 ##    Only tested on mac OS, even though Homebrew now supports other platforms.
 ##
 
@@ -20,6 +20,8 @@ this_script_fbn="$(basename "$0")"
 this_script_stem="${this_script_fbn%.*sh}"
 
 this_script_dpn="$(cd "$(dirname "$0")" && pwd -P)"
+
+this_package_dpn="$(cd "$(dirname "${this_script_dpn}")" && pwd -P)"
 
 ##
 ## configuration:
@@ -77,7 +79,7 @@ BREW_BOOTSTRAP_STANDARD_BREW_FORMULA_LIST=(
 
 BREW_BOOTSTRAP_STANDARD_BREW_BUNDLE_LIST=(
 
-	"${this_script_pnp:?}".conf.initial-bundle
+	"${this_package_dpn:?}/etc/${this_script_stem:?}".conf.initial-bundle
 )
 
 [ "${#BREW_BOOTSTRAP_STANDARD_BREW_BUNDLE_LIST[@]}" -gt 0 ]
@@ -186,7 +188,7 @@ function check_package_brew_installation_root() { # installation_root_dpn
 		;;
 	esac
 
-	! [ -L "${installation_root_dpn:?}" ] || { 
+	! [ -L "${installation_root_dpn:?}" ] || {
 
 		echo 1>&2 "Must be directory (not symbolic link): ${installation_root_dpn:?}"
 		(false ; return)
@@ -263,7 +265,7 @@ function ensure_backup_of_package_brew_installation_root() { # installation_root
 
 	##
 
-	[ -s "${backup_destination_fpn:?}" ] || 
+	[ -s "${backup_destination_fpn:?}" ] ||
 	backup_package_brew_installation_root_to "${backup_destination_fpn:?}" "${installation_root_dpn:?}"
 }
 
