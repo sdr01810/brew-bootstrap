@@ -21,13 +21,20 @@
 ##     make clean
 ##     make clobber
 ##
-##     make build check stage
+##     make all
+##     make build check stage dist
 ##
 ##     make install
 ##     make install.undo
 ##
 ##     sudo make install DESTDIR=/opt/my-package
 ##     sudo make install INSTALLATION_DIR=/opt/my-package
+## 
+## Warning:
+##     
+##     The targets install and install.undo entirely replace and remove the
+##     installation directory, respectively. In other words, the installation
+##     directory is expected to be dedicated solely to this package.
 ##
 
 package_name := $(shell head -1 NAME.txt)
@@ -35,63 +42,73 @@ package_version := $(shell head -1 VERSION.txt)
 
 ##
 
-build_dir ?= build
+build_output_dir ?= build-output
 
-build_staging_dir ?= $(build_dir)/staging
+build_output_dir_umask ?= 022
+
+build_output_staging_dir ?= $(build_output_dir)/staging
+
+build_output_staging_dir_umask ?= 022
 
 ##
 
-distribution_candidate_files = $(strip \
-	$(shell $(distribution_candidate_file_finder)) \
+distribution_archive_file_stem := $(strip \
+	$(package_name)-$(package_version) \
 )
-distribution_candidate_file_finder = $(strip \
-	find $(distribution_candidate_top_files_and_dirs_glob) ! -type d ! -name '.*' ! -name '*~' \
+distribution_archive_file_tar_gz := $(strip \
+	$(build_output_dir)/$(distribution_archive_file_stem).tar.gz \
 )
+distribution_archive_files = $(strip \
+	$(distribution_archive_file_tar_gz) \
+)
+
+##
+
 ifndef distribution_candidate_top_files_and_dirs_glob
 $(error Not defined: distribution_candidate_top_files_and_dirs_glob)
 endif
 
-##
-
-distribution_archive_files = $(strip \
-	$(distribution_archive_file_tar_gz) \
+distribution_candidate_file_finder = $(strip \
+	find $(distribution_candidate_top_files_and_dirs_glob) ! -type d ! -name '.*' ! -name '*~' \
 )
-distribution_archive_file_tar_gz = $(strip \
-	$(build_dir)/$(distribution_archive_file_stem).tar.gz \
-)
-distribution_archive_file_stem = $(strip \
-	$(package_name)-$(package_version) \
+distribution_candidates = $(strip \
+	$(shell $(distribution_candidate_file_finder)) \
 )
 
 ##
 
-distribution_staging_dir = $(strip \
-	$(build_staging_dir)/$(distribution_archive_file_stem) \
+distribution_candidates_as_file := $(strip \
+	$(build_output_dir)/$(distribution_archive_file_stem).files \
 )
-distribution_staging_dir_umask ?= 0022
-
-distribution_staging_dir_parent = $(strip \
-	$(patsubst %/,%,$(dir $(distribution_staging_dir))) \
-)
+distribution_candidates_computed_once := $(distribution_candidates)
 
 ##
 
-installation_dir = $(strip \
-	$(or $(patsubst %/,%,$(or $(INSTALLATION_DIR),$(DESTDIR))),$(default_installation_dir)) \
+distribution_staging_dir := $(strip \
+	$(build_output_staging_dir)/$(distribution_archive_file_stem) \
 )
-installation_dir_umask ?= 0022
+distribution_staging_dir_umask ?= 022
 
-installation_dir_parent = $(strip \
-	$(patsubst %/,%,$(dir $(installation_dir))) \
-)
-default_installation_dir = $(strip \
+
+##
+
+default_installation_dir := $(strip \
 	/opt/$(distribution_archive_file_stem) \
 )
+installation_dir := $(strip \
+	$(patsubst %/,%,$(or $(INSTALLATION_DIR),$(DESTDIR),$(default_installation_dir))) \
+)
+installation_dir_unversioned := $(strip \
+	$(patsubst %-$(package_version),%,$(installation_dir)) \
+)
+installation_dir_umask ?= 022
 
 
 ##
 
-targets := default t
+targets_phony += default t
+
+targets +=
 
 default ::
 
@@ -101,16 +118,16 @@ t ::
 
 ##
 
-targets += what
+targets_phony += what
 
 what ::
-	@echo "$(targets)" | perl -pe 's{\s+}{$$/}g' | sort -u
+	@echo "$(targets_phony)" "$(targets)" | perl -pe 's{\s+}{$$/}g' | sort -u | sort -f
 
 ##
 
-targets += build check clean clobber
+targets_phony += build check clean clobber
 
-build ::
+build :: $(build_output_dir)/.ts.made
 
 check :: build
 
@@ -122,62 +139,188 @@ default :: build
 
 ##
 
-targets += stage
+targets += $(distribution_candidates_as_file)
 
-stage :: $(distribution_staging_dir)
+build :: $(distribution_candidates_as_file)
 
-$(distribution_staging_dir) : $(distribution_candidate_files) $(distribution_staging_dir_parent)
-	umask $(distribution_staging_dir_umask) && mkdir -p "$@" && \
-	$(distribution_candidate_file_finder) -print0 | cpio -0 -pdmuv "$@"
+clean ::
+	:
+	rm -rf "$(distribution_candidates_as_file)"
 
-$(distribution_staging_dir_parent) :
-	umask $(distribution_staging_dir_umask) && mkdir -p "$@"
+$(distribution_candidates_as_file) : $(dir $(distribution_candidates_as_file)).ts.made
+$(distribution_candidates_as_file) : $(distribution_candidates_computed_once) $(force)
+	:
+	ls -d $(distribution_candidates_computed_once) | \
+	sort > "$@"
+	:
+	wc -l "$@"
+
+##
+
+targets += TAGS tags
+
+build :: TAGS tags
+
+clean ::
+	:
+	rm -rf TAGS tags
+
+TAGS tags : $(distribution_candidates_as_file)
+	:
+	etags --members $$(cat "$^")
+	ctags $$(cat "$^")
+
+##
+
+targets_phony += stage
+
+targets += $(distribution_staging_dir)
+
+stage :: $(distribution_staging_dir)/.ts.made
 
 clobber ::
+	:
 	rm -rf "$(distribution_staging_dir)"
 
-default :: #!#stage
+$(distribution_staging_dir)/.ts.made : $(distribution_candidates_as_file)
+$(distribution_staging_dir)/.ts.made : $(distribution_candidates_computed_once)
+	:
+	rm -rf "$(dir $@)"
+	:
+	umask $(distribution_staging_dir_umask) && \
+	(cat "$(distribution_candidates_as_file)" | cpio -pdmuv "$(patsubst %/,%,$(dir $@))")
+	:
+	umask $(distribution_staging_dir_umask) && \
+	for d1 in "$(dir $@)"bin \
+	          "$(dir $@)"bin/thunk ; do \
+	for x1 in "$${d1:?}"/*.js "$${d1:?}"/*.sh "$${d1:?}"/*.pl \
+	          "$${d1:?}"/*.py "$${d1:?}"/*.tcl "$${d1:?}"/*.tk ; do \
+		[ -e "$${x1:?}" ] || continue ; \
+		x1_target="$$(basename "$${x1:?}")" ; \
+		case "$${x1:?}" in */*.prolog.*) continue ;; esac ; \
+		(set -x ; ln -snf "$${x1_target:?}" "$${x1%.*}") ; \
+	done;done
+	@touch "$@"
 
 ##
 
-targets += dist distribution
+targets_phony += dist
 
-dist distribution :: $(distribution_archive_files)
+targets += $(distribution_archive_files)
 
-$(distribution_archive_file_tar_gz) : $(distribution_candidate_files) $(distribution_staging_dir)
-	cd "$(distribution_staging_dir_parent)" && \
-	tar cvf "$(notdir $@)" "$(notdir $(distribution_staging_dir))"
+dist :: stage
+
+dist :: $(distribution_archive_files)
 
 clobber ::
+	:
 	rm -rf "$(distribution_archive_files)"
 
-default :: #!#distribution
+$(distribution_archive_file_tar_gz) : $(distribution_staging_dir)/.ts.made $(force)
+	:
+	umask $(distribution_staging_dir_umask) && \
+	tar cvzf "$@" -C "$(dir $(distribution_staging_dir))" --exclude='.ts.*' "$(notdir $(distribution_staging_dir))"
+	:
+	ls -lh "$@"
 
 ##
 
-targets += install install.undo
+targets_phony += install install.undo
 
-install :: $(installation_dir)
+install.undo ::
+	:
+	rm -f "/etc/paths.d/$(package_name)"
+	rm -f "/etc/profile.d/$(package_name).sh"
 
-install.undo :: ; rm -rf "$(installation_dir)"
+ifeq ($(notdir $(installation_dir)),$(package_name)-$(package_version))
+install.undo ::
+	:
+	! [ "$(notdir $(installation_dir))" = "$$(readlink "$(installation_dir_unversioned)" 2>/dev/null)" ] || rm -rf "$(installation_dir_unversioned)"
+	:
+	rm -rf "$(installation_dir)"
+else
+ifeq ($(notdir $(installation_dir)),$(package_name))
+install.undo ::
+	:
+	rm -rf "$(installation_dir)"
+else
+install.undo ::
+	@echo 1>&2 "Cannot remove installation safely: $(installation_dir)"
+	@false
+endif
+endif
 
-$(installation_dir) : $(distribution_staging_dir) $(installation_dir_parent)
-	umask $(installation_dir_umask) && cp -r "$<" "$@"
+install :: stage
 
-$(installation_dir_parent) :
-	umask $(installation_dir_umask) && mkdir -p "$@"
+ifneq ($(installation_dir_unversioned),$(installation_dir)) 
+install :: $(installation_dir_unversioned)/.ts.installed
+else
+install :: $(installation_dir)/.ts.installed
+endif
 
-clobber ::
+ifneq ($(installation_dir_unversioned),$(installation_dir)) 
+$(installation_dir_unversioned)/.ts.installed : $(installation_dir)/.ts.installed
+	:
+	umask $(installation_dir_umask) && \
+	ln -snf "$(notdir $(installation_dir))" "$(installation_dir_unversioned)"
+endif
 
-default :: #!#install
+$(installation_dir)/.ts.installed : $(distribution_staging_dir)/.ts.made $(force)
+	:
+	umask $(installation_dir_umask) && \
+	rsync -a --delete --exclude='.ts.*' "$(dir $<)" "$(dir $@)"
+	:
+	umask $(installation_dir_umask) && \
+	for x1 in "$(dir $@)etc"/*/*.in ; do \
+		[ -e "$${x1:?}" ] || continue ; \
+		(set -x ; sed -e 's#@package_installation_dir_unversioned@#$(patsubst %/,%,$(installation_dir_unversioned))#g' "$${x1:?}" > "$${x1%.in}") ; \
+	done
+	:
+	umask $(installation_dir_umask) && \
+	if [ -d /etc/paths.d ] ; then \
+		(set -x ; cp "$(dir $@)etc/paths.d/$(package_name)" "/etc/paths.d/.") ; \
+	elif [ -d /etc/profile.d ] ; then \
+		(set -x ; cp "$(dir $@)etc/profile.d/$(package_name)".*.sh "/etc/profile.d/.") ; \
+	fi
+	@touch "$@"
 
 ##
 
-.PHONY : $(targets)
+targets_phony += all
+
+all :: build check stage dist
+
+##
+
+$(build_output_staging_dir)/ : $(build_output_staging_dir)/.ts.made
+
+$(build_output_staging_dir)/.ts.made : $(force)
+	:
+	umask $(build_output_staging_dir_umask) && \
+	mkdir -p "$(dir $@)"
+	@touch "$@"
 
 clobber ::
-	rm -rf "$(build_staging_dir)"
-	rm -rf "$(build_dir)"
+	:
+	rm -rf "$(build_output_staging_dir)"
+
+## 
+
+$(build_output_dir)/ : $(build_output_dir)/.ts.made
+
+$(build_output_dir)/.ts.made : $(force)
+	:
+	umask $(build_output_dir_umask) && \
+	mkdir -p "$(dir $@)"
+	@touch "$@"
+
+clobber ::
+	:
+	rm -rf "$(build_output_dir)"
+
+## 
+
+.PHONY : $(targets_phony) # must be last
 
 ## EOF
 
