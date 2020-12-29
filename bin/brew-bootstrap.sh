@@ -404,5 +404,5 @@ function main() { # ...
 	create_brew_bootstrap_bundle --provide-parting-advice
 }
 
-main "$@"
+! [ "$0" = "${BASH_SOURCE:?}" ] || main "$@"
 
